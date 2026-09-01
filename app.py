@@ -644,28 +644,95 @@ with st.sidebar:
             value=datetime.time(12, 0),
         )
 
-        birth_city = st.selectbox(
-            "出生地点",
-            city_keys,
-            index=city_keys.index(default_birth_city),
+              birth_location_mode = st.radio(
+            "出生地点输入方式",
+            ["选择城市", "手动输入经纬度"],
+            horizontal=True,
         )
 
-        birth_city_data = get_city_data(birth_city)
+        if birth_location_mode == "选择城市":
+            birth_city = st.selectbox(
+                "出生城市",
+                city_keys,
+                index=city_keys.index(default_birth_city),
+            )
 
-        birth_place_name = birth_city
-        birth_longitude = float(
-            birth_city_data["longitude"]
-        )
-        birth_latitude = float(
-            birth_city_data["latitude"]
-        )
-        birth_timezone = birth_city_data["timezone"]
+            birth_city_data = get_city_data(birth_city)
 
-        st.caption(
-            f"{birth_city}：经度 {birth_longitude:.6f}°，"
-            f"纬度 {birth_latitude:.6f}°，"
-            f"时区 {birth_timezone}"
-        )
+            birth_place_name = birth_city
+            birth_longitude = float(
+                birth_city_data["longitude"]
+            )
+            birth_latitude = float(
+                birth_city_data["latitude"]
+            )
+            birth_timezone = birth_city_data["timezone"]
+
+            st.caption(
+                f"{birth_city}：经度 {birth_longitude:.6f}°，"
+                f"纬度 {birth_latitude:.6f}°，"
+                f"时区 {birth_timezone}"
+            )
+
+        else:
+            birth_place_name = st.text_input(
+                "出生地名称，可选",
+                value="",
+                placeholder="例如：黑龙江省某县某乡",
+            )
+
+            birth_longitude = st.number_input(
+                "出生地经度",
+                min_value=-180.0,
+                max_value=180.0,
+                value=float(longitude),
+                format="%.6f",
+            )
+
+            birth_latitude = st.number_input(
+                "出生地纬度",
+                min_value=-90.0,
+                max_value=90.0,
+                value=float(latitude),
+                format="%.6f",
+            )
+
+            birth_timezone = ""
+
+            try:
+                validate_coordinates(
+                    birth_longitude,
+                    birth_latitude,
+                )
+            except ValueError as exc:
+                birth_timezone = ""
+                st.error(str(exc))
+            else:
+                birth_tz_finder = TimezoneFinder()
+
+                birth_timezone = (
+                    birth_tz_finder.timezone_at(
+                        lng=birth_longitude,
+                        lat=birth_latitude,
+                    )
+                )
+
+                if not birth_timezone:
+                    st.error(
+                        "无法根据出生地经纬度识别时区，"
+                        "请核对坐标，或改选城市。"
+                    )
+                else:
+                    st.caption(
+                        f"出生地："
+                        f"{birth_place_name or '手动坐标'}　"
+                        f"经度 {birth_longitude:.6f}°　"
+                        f"纬度 {birth_latitude:.6f}°　"
+                        f"时区 {birth_timezone}"
+                    )
+
+            if not birth_place_name.strip():
+                birth_place_name = "手动经纬度地点"
 
         birth_gender = st.radio(
             "性别",
