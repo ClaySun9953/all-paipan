@@ -612,248 +612,262 @@ with st.sidebar:
     else:
         default_birth_city = city_keys[0]
 
-    with st.form("entry_form"):
-        initial_date = st.date_input(
-            "初始当地民用日期",
-            value=local_now.date(),
+    # ========== 没有 st.form 了，所有控件即时响应 ==========
+
+    initial_date = st.date_input(
+        "初始当地民用日期",
+        value=local_now.date(),
+    )
+
+    initial_time = st.time_input(
+        "初始当地民用时间",
+        value=local_now.time().replace(
+            microsecond=0
+        ),
+    )
+
+    user_name = st.text_input("求测人")
+    question = st.text_input("问事")
+
+    st.markdown("---")
+    st.markdown("### 出生信息（必填）")
+    st.caption(
+        "出生信息同时用于：奇门年命、紫微本命盘。"
+    )
+
+    birth_date_input = st.date_input(
+        "出生日期",
+        value=datetime.date(1990, 1, 1),
+    )
+
+    birth_time_input = st.time_input(
+        "出生时间",
+        value=datetime.time(12, 0),
+    )
+
+    birth_location_mode = st.radio(
+        "出生地点输入方式",
+        ["选择城市", "手动输入经纬度"],
+        horizontal=True,
+    )
+
+    if birth_location_mode == "选择城市":
+        birth_city = st.selectbox(
+            "出生城市",
+            city_keys,
+            index=city_keys.index(default_birth_city),
         )
 
-        initial_time = st.time_input(
-            "初始当地民用时间",
-            value=local_now.time().replace(
-                microsecond=0
-            ),
+        birth_city_data = get_city_data(birth_city)
+
+        birth_place_name = birth_city
+        birth_longitude = float(
+            birth_city_data["longitude"]
         )
+        birth_latitude = float(
+            birth_city_data["latitude"]
+        )
+        birth_timezone = birth_city_data["timezone"]
 
-        user_name = st.text_input("求测人")
-        question = st.text_input("问事")
-
-        st.markdown("---")
-        st.markdown("### 出生信息（必填）")
         st.caption(
-            "出生信息同时用于：奇门年命、紫微本命盘。"
+            f"{birth_city}：经度 {birth_longitude:.6f}°，"
+            f"纬度 {birth_latitude:.6f}°，"
+            f"时区 {birth_timezone}"
         )
 
-        birth_date_input = st.date_input(
-            "出生日期",
-            value=datetime.date(1990, 1, 1),
+    else:
+        birth_place_name = st.text_input(
+            "出生地名称，可选",
+            value="",
+            placeholder="例如：黑龙江省某县某乡",
         )
 
-        birth_time_input = st.time_input(
-            "出生时间",
-            value=datetime.time(12, 0),
+        birth_longitude = st.number_input(
+            "出生地经度",
+            min_value=-180.0,
+            max_value=180.0,
+            value=float(longitude),
+            format="%.6f",
         )
 
-              birth_location_mode = st.radio(
-            "出生地点输入方式",
-            ["选择城市", "手动输入经纬度"],
-            horizontal=True,
+        birth_latitude = st.number_input(
+            "出生地纬度",
+            min_value=-90.0,
+            max_value=90.0,
+            value=float(latitude),
+            format="%.6f",
         )
 
-        if birth_location_mode == "选择城市":
-            birth_city = st.selectbox(
-                "出生城市",
-                city_keys,
-                index=city_keys.index(default_birth_city),
+        st.caption(
+            "不知道经纬度？打开手机地图，"
+            "长按出生地点，即可复制该点经纬度。"
+        )
+
+        birth_timezone = ""
+
+        try:
+            validate_coordinates(
+                birth_longitude,
+                birth_latitude,
+            )
+        except ValueError as exc:
+            st.error(str(exc))
+        else:
+            birth_tz_finder = TimezoneFinder()
+
+            birth_timezone = (
+                birth_tz_finder.timezone_at(
+                    lng=birth_longitude,
+                    lat=birth_latitude,
+                )
             )
 
-            birth_city_data = get_city_data(birth_city)
+            if not birth_timezone:
+                st.error(
+                    "无法根据出生地经纬度识别时区，"
+                    "请核对坐标，或改选城市。"
+                )
+            else:
+                st.caption(
+                    f"出生地："
+                    f"{birth_place_name or '手动坐标'}　"
+                    f"经度 {birth_longitude:.6f}°　"
+                    f"纬度 {birth_latitude:.6f}°　"
+                    f"时区 {birth_timezone}"
+                )
 
-            birth_place_name = birth_city
-            birth_longitude = float(
-                birth_city_data["longitude"]
-            )
-            birth_latitude = float(
-                birth_city_data["latitude"]
-            )
-            birth_timezone = birth_city_data["timezone"]
+        if not birth_place_name.strip():
+            birth_place_name = "手动经纬度地点"
 
-            st.caption(
-                f"{birth_city}：经度 {birth_longitude:.6f}°，"
-                f"纬度 {birth_latitude:.6f}°，"
-                f"时区 {birth_timezone}"
+    birth_gender = st.radio(
+        "性别",
+        ["男", "女"],
+        horizontal=True,
+    )
+
+    leap_month_rule = st.selectbox(
+        "闰月处理规则",
+        [
+            "按本月",
+            "按下月",
+            "用户指定",
+            "流派默认",
+        ],
+    )
+
+    if leap_month_rule == "用户指定":
+        user_lunar_month = st.number_input(
+            "用户指定排盘农历月",
+            min_value=1,
+            max_value=12,
+            value=1,
+        )
+    else:
+        user_lunar_month = None
+
+    target_year = st.number_input(
+        "目标流年，可选",
+        min_value=1900,
+        max_value=2200,
+        value=local_now.year,
+    )
+
+    year_ming = year_to_zhi(
+        birth_date_input.year
+    )
+
+    st.caption(
+        f"出生年 {birth_date_input.year} 年，"
+        f"奇门年命自动换算为：{year_ming}"
+    )
+
+    st.markdown("---")
+
+    submitted = st.button(
+        "锁定地点并开始起卦",
+        type="primary",
+        use_container_width=True,
+    )
+
+    if submitted:
+        if not location_valid:
+            st.error(
+                "地点无效或尚未确认，已阻止排盘。"
+            )
+
+        elif not user_name.strip():
+            st.warning("请填写求测人。")
+
+        elif not question.strip():
+            st.warning("请填写问事。")
+
+        elif not birth_timezone:
+            st.error(
+                "出生地时区无法识别，请调整出生地坐标，"
+                "或改用城市选择。"
             )
 
         else:
-            birth_place_name = st.text_input(
-                "出生地名称，可选",
-                value="",
-                placeholder="例如：黑龙江省某县某乡",
+            initial_dt = datetime.datetime.combine(
+                initial_date,
+                initial_time,
             )
-
-            birth_longitude = st.number_input(
-                "出生地经度",
-                min_value=-180.0,
-                max_value=180.0,
-                value=float(longitude),
-                format="%.6f",
-            )
-
-            birth_latitude = st.number_input(
-                "出生地纬度",
-                min_value=-90.0,
-                max_value=90.0,
-                value=float(latitude),
-                format="%.6f",
-            )
-
-            birth_timezone = ""
 
             try:
-                validate_coordinates(
-                    birth_longitude,
-                    birth_latitude,
+                initial_aware = localize_datetime(
+                    timezone_name,
+                    initial_dt,
                 )
             except ValueError as exc:
-                birth_timezone = ""
                 st.error(str(exc))
-            else:
-                birth_tz_finder = TimezoneFinder()
+                st.stop()
 
-                birth_timezone = (
-                    birth_tz_finder.timezone_at(
-                        lng=birth_longitude,
-                        lat=birth_latitude,
-                    )
-                )
+            utc_offset = initial_aware.utcoffset()
 
-                if not birth_timezone:
-                    st.error(
-                        "无法根据出生地经纬度识别时区，"
-                        "请核对坐标，或改选城市。"
-                    )
-                else:
-                    st.caption(
-                        f"出生地："
-                        f"{birth_place_name or '手动坐标'}　"
-                        f"经度 {birth_longitude:.6f}°　"
-                        f"纬度 {birth_latitude:.6f}°　"
-                        f"时区 {birth_timezone}"
-                    )
+            if utc_offset is None:
+                st.error("无法取得当地 UTC 偏移。")
+                st.stop()
 
-            if not birth_place_name.strip():
-                birth_place_name = "手动经纬度地点"
+            st.session_state["u_info"] = {
+                "name": user_name.strip(),
+                "ask": question.strip(),
+                "city": city_name,
+                "address": address_text,
+                "longitude": float(longitude),
+                "latitude": float(latitude),
+                "timezone": timezone_name,
+                "coordinate_system": coordinate_system,
+                "location_provider": location_provider,
+                "standard_meridian": float(
+                    standard_meridian
+                ),
+                "utc_offset_hours": (
+                    utc_offset.total_seconds() / 3600.0
+                ),
+                "local_dt": initial_dt.isoformat(),
+                "local_dt_aware": initial_aware.isoformat(),
+                "calculate_equation_of_time": (
+                    calculate_eot
+                ),
+                "shake_history": [],
+                "last_shake_time": None,
+                "year_ming": year_ming,
+                "birth_year": birth_date_input.year,
+                "birth_date": birth_date_input,
+                "birth_time": birth_time_input,
+                "birth_place_name": birth_place_name,
+                "birth_longitude": birth_longitude,
+                "birth_latitude": birth_latitude,
+                "birth_timezone": birth_timezone,
+                "birth_gender": birth_gender,
+                "leap_month_rule": leap_month_rule,
+                "user_lunar_month": user_lunar_month,
+                "target_year": target_year,
+            }
 
-        birth_gender = st.radio(
-            "性别",
-            ["男", "女"],
-            horizontal=True,
-        )
+            st.session_state["yao_list"] = []
 
-        leap_month_rule = st.selectbox(
-            "闰月处理规则",
-            [
-                "按本月",
-                "按下月",
-                "用户指定",
-                "流派默认",
-            ],
-        )
-
-        if leap_month_rule == "用户指定":
-            user_lunar_month = st.number_input(
-                "用户指定排盘农历月",
-                min_value=1,
-                max_value=12,
-                value=1,
-            )
-        else:
-            user_lunar_month = None
-
-        target_year = st.number_input(
-            "目标流年，可选",
-            min_value=1900,
-            max_value=2200,
-            value=local_now.year,
-        )
-
-        year_ming = year_to_zhi(
-            birth_date_input.year
-        )
-
-        st.caption(
-            f"出生年 {birth_date_input.year} 年，"
-            f"奇门年命自动换算为：{year_ming}"
-        )
-
-        submitted = st.form_submit_button(
-            "锁定地点并开始起卦",
-            type="primary",
-        )
-
-        if submitted:
-            if not location_valid:
-                st.error(
-                    "地点无效或尚未确认，已阻止排盘。"
-                )
-
-            elif not user_name.strip():
-                st.warning("请填写求测人。")
-
-            elif not question.strip():
-                st.warning("请填写问事。")
-
-            else:
-                initial_dt = datetime.datetime.combine(
-                    initial_date,
-                    initial_time,
-                )
-
-                try:
-                    initial_aware = localize_datetime(
-                        timezone_name,
-                        initial_dt,
-                    )
-                except ValueError as exc:
-                    st.error(str(exc))
-                    st.stop()
-
-                utc_offset = initial_aware.utcoffset()
-
-                if utc_offset is None:
-                    st.error("无法取得当地 UTC 偏移。")
-                    st.stop()
-
-                st.session_state["u_info"] = {
-                    "name": user_name.strip(),
-                    "ask": question.strip(),
-                    "city": city_name,
-                    "address": address_text,
-                    "longitude": float(longitude),
-                    "latitude": float(latitude),
-                    "timezone": timezone_name,
-                    "coordinate_system": coordinate_system,
-                    "location_provider": location_provider,
-                    "standard_meridian": float(
-                        standard_meridian
-                    ),
-                    "utc_offset_hours": (
-                        utc_offset.total_seconds() / 3600.0
-                    ),
-                    "local_dt": initial_dt.isoformat(),
-                    "local_dt_aware": initial_aware.isoformat(),
-                    "calculate_equation_of_time": (
-                        calculate_eot
-                    ),
-                    "shake_history": [],
-                    "last_shake_time": None,
-                    "year_ming": year_ming,
-                    "birth_year": birth_date_input.year,
-                    "birth_date": birth_date_input,
-                    "birth_time": birth_time_input,
-                    "birth_place_name": birth_place_name,
-                    "birth_longitude": birth_longitude,
-                    "birth_latitude": birth_latitude,
-                    "birth_timezone": birth_timezone,
-                    "birth_gender": birth_gender,
-                    "leap_month_rule": leap_month_rule,
-                    "user_lunar_month": user_lunar_month,
-                    "target_year": target_year,
-                }
-
-                st.session_state["yao_list"] = []
-
-                st.rerun()
+            st.rerun()
 
 
 if not st.session_state["u_info"]:
