@@ -404,6 +404,9 @@ if "yao_list" not in st.session_state:
 if "u_info" not in st.session_state:
     st.session_state["u_info"] = {}
 
+if "chart_saved" not in st.session_state:
+    st.session_state["chart_saved"] = False
+
 if "geocoded_location" not in st.session_state:
     st.session_state["geocoded_location"] = None
 
@@ -901,6 +904,7 @@ with st.sidebar:
             }
 
             st.session_state["yao_list"] = []
+            st.session_state["chart_saved"] = False
 
             st.rerun()
 
@@ -1907,6 +1911,105 @@ prompt_lines = [
 ]
 
 ai_prompt = "\n".join(prompt_lines)
+
+
+# =========================================================
+# 自动保存当前排盘
+# =========================================================
+
+if not st.session_state.get("chart_saved", False):
+    record_inputs = {
+        "name": info.get("name", ""),
+        "ask": info.get("ask", ""),
+        "city": info.get("city", ""),
+        "address": info.get("address", ""),
+        "longitude": info.get("longitude"),
+        "latitude": info.get("latitude"),
+        "timezone": info.get("timezone", ""),
+        "coordinate_system": info.get(
+            "coordinate_system",
+            "",
+        ),
+        "location_provider": info.get(
+            "location_provider",
+            "",
+        ),
+        "standard_meridian": info.get(
+            "standard_meridian",
+        ),
+        "utc_offset_hours": info.get(
+            "utc_offset_hours",
+        ),
+        "chart_time": chart_dt.isoformat(),
+        "chart_time_label": chart_time_label,
+        "solar_longitude": solar_longitude,
+        "term_name": term_name,
+        "birth_year": info.get("birth_year"),
+        "birth_date": str(
+            info.get("birth_date", "")
+        ),
+        "birth_time": str(
+            info.get("birth_time", "")
+        ),
+        "birth_place_name": info.get(
+            "birth_place_name",
+            "",
+        ),
+        "birth_longitude": info.get(
+            "birth_longitude",
+        ),
+        "birth_latitude": info.get(
+            "birth_latitude",
+        ),
+        "birth_timezone": info.get(
+            "birth_timezone",
+            "",
+        ),
+        "birth_gender": info.get(
+            "birth_gender",
+            "",
+        ),
+        "leap_month_rule": info.get(
+            "leap_month_rule",
+            "",
+        ),
+        "user_lunar_month": info.get(
+            "user_lunar_month",
+        ),
+        "target_year": info.get(
+            "target_year",
+        ),
+        "year_ming": info.get(
+            "year_ming",
+            "",
+        ),
+        "yao_list": list(yao_list),
+        "shake_history": info.get(
+            "shake_history",
+            [],
+        ),
+    }
+
+    record_title = (
+        f"{info.get('name', '')}："
+        f"{info.get('ask', '')}"
+    ).strip("： ")
+
+    try:
+        save_chart_record(
+            title=record_title or "未命名排盘",
+            inputs=record_inputs,
+            ai_prompt=ai_prompt,
+        )
+
+        # 只有数据库保存成功后，才标记为已保存
+        st.session_state["chart_saved"] = True
+        st.success("本次排盘已自动保存")
+
+    except Exception as exc:
+        st.error("本次排盘自动保存失败")
+        st.exception(exc)
+
 
 st.divider()
 
