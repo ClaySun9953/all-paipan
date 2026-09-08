@@ -4,6 +4,7 @@ import core_engine
 import datetime
 import math
 import random
+import pandas as pd
 from datetime import timedelta
 
 
@@ -2021,11 +2022,19 @@ st.text_area(
 
 st.subheader("保存排盘记录")
 
-record_title = st.text_input(
-    "记录标题",
-    value=f"{info['name']}：{info['ask']}",
-    help="用于以后在历史记录中识别这次排盘。",
+# 使用北京时间作为保存标题中的时间
+save_time_cn = datetime.datetime.now(
+    pytz.timezone("Asia/Shanghai")
 )
+
+record_title = (
+    f"{save_time_cn.strftime('%Y-%m-%d %H:%M:%S')}｜"
+    f"{info.get('name', '未填写')}｜"
+    f"{info.get('ask', '未填写')}"
+)
+
+st.caption(f"本次记录标题：{record_title}")
+
 
 if st.button(
     "保存当前排盘",
@@ -2072,4 +2081,80 @@ if st.button(
 
     except Exception as exc:
         st.error("保存失败，数据库没有写入记录。")
+        st.exception(exc)
+
+st.divider()
+st.subheader("历史记录导出")
+
+if st.button("读取历史记录"):
+    try:
+        response = (
+            get_db()
+            .table("chart_records")
+            .select(
+                "id, created_at, title, inputs, "
+                "result_text, initial_analysis, review_notes"
+            )
+            .order("created_at", desc=True)
+            .execute()
+        )
+
+        records = response.data or []
+
+        if not records:
+            st.info("目前还没有历史记录。")
+
+        else:
+            # 将 inputs 中的 JSON 字段展开成普通表格列
+            df = pd.json_normalize(records)
+
+            # 将 Supabase 的 UTC 时间转换为北京时间
+            if "created_at" in df.columns:
+                df["created_at"] = (
+                    pd.to_datetime(
+                        df["created_at"],
+                        utc=True,
+                    )
+                    .dt.tz_convert("Asia/Shanghai")
+                    .dt.strftime("%Y-%m-%d %H:%M:%S")
+                )
+
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            # 导出 CSV。
+            # utf-8-sig 可以让 Excel/WPS 正常识别中文。
+            csv_data = df.to_csv(
+                index=False,
+            ).encode("utf-8-sig")
+
+            st.download_button(
+                label="下载 CSV 表格",
+                data=csv_data,
+                file_name="排盘历史记录.csv",
+                mime="text/csv",
+            )
+
+            # 同时提供完整 JSON 备份
+            import json
+
+            json_data = json.dumps(
+                records,
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            )
+
+            st.download_button(
+                label="下载完整 JSON 备份",
+                data=json_data.encode("utf-8"),
+                file_name="排盘历史记录.json",
+                mime="application/json",
+            )
+
+    except Exception as exc:
+        st.error("读取历史记录失败")
         st.exception(exc)
