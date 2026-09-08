@@ -1994,20 +1994,58 @@ if not st.session_state.get("chart_saved", False):
     }
 
     
+        # -----------------------------------------------------
+    # 生成自动保存标题
+    # 格式：北京时间｜求测人｜问事
+    # -----------------------------------------------------
+    save_time_cn = datetime.datetime.now(
+        pytz.timezone("Asia/Shanghai")
+    )
+
+    person_name = (
+        str(info.get("name", "")).strip()
+        or "未填写"
+    )
+
+    question_text = (
+        str(info.get("ask", "")).strip()
+        or "未填写"
+    )
+
+    record_title = (
+        f"{save_time_cn.strftime('%Y-%m-%d %H:%M:%S')}｜"
+        f"{person_name}｜"
+        f"{question_text}"
+    )
+
     try:
-        save_chart_record(
-            title=record_title or "未命名排盘",
+        saved_data = save_chart_record(
+            title=record_title,
             inputs=record_inputs,
             ai_prompt=ai_prompt,
         )
 
-        # 只有数据库保存成功后，才标记为已保存
+        # 只有数据库写入成功后才设为 True，
+        # 防止 Streamlit 重运行时重复保存。
         st.session_state["chart_saved"] = True
-        st.success("本次排盘已自动保存")
+
+        if saved_data:
+            saved_record_no = saved_data[0].get("record_no")
+
+            if saved_record_no is not None:
+                st.success(
+                    "本次排盘已自动保存，"
+                    f"记录号：{saved_record_no}"
+                )
+            else:
+                st.success("本次排盘已自动保存")
+        else:
+            st.success("本次排盘已自动保存")
 
     except Exception as exc:
         st.error("本次排盘自动保存失败")
         st.exception(exc)
+
 
 
 st.divider()
@@ -2032,7 +2070,7 @@ if st.button("读取历史记录"):
                 "result_text, initial_analysis, review_notes"
             )
             # 按后台记录号倒序：最新记录在最上面
-            .order("record_no", desc=True)
+            .order("record_no", desc=False)
             .execute()
         )
 
@@ -2130,7 +2168,7 @@ if st.button("读取历史记录"):
                 hide_index=True,
             )
 
-            # 生成标准 Excel 文件
+                        # 生成标准 Excel 文件
             excel_buffer = BytesIO()
 
             with pd.ExcelWriter(
@@ -2143,9 +2181,11 @@ if st.button("读取历史记录"):
                     sheet_name="排盘历史记录",
                 )
 
-                worksheet = writer.sheets["排盘历史记录"]
+                worksheet = writer.sheets[
+                    "排盘历史记录"
+                ]
 
-                # 冻结第一行，方便向下查看
+                # 冻结第一行
                 worksheet.freeze_panes = "A2"
 
                 # 开启筛选
@@ -2153,7 +2193,7 @@ if st.button("读取历史记录"):
                     worksheet.dimensions
                 )
 
-                # 设置基础列宽
+                # 设置列宽
                 for column_cells in worksheet.columns:
                     column_letter = (
                         column_cells[0].column_letter
@@ -2184,7 +2224,7 @@ if st.button("读取历史记录"):
                         column_letter
                     ].width = width
 
-                # 长文本自动换行并顶部对齐
+                # 长文本自动换行
                 from openpyxl.styles import Alignment
 
                 for row in worksheet.iter_rows(
@@ -2196,10 +2236,18 @@ if st.button("读取历史记录"):
                             wrap_text=True,
                         )
 
+            # 生成下载文件名
+            export_time_cn = datetime.datetime.now(
+                pytz.timezone("Asia/Shanghai")
+            ).strftime("%Y%m%d_%H%M%S")
+
             st.download_button(
                 label="下载 Excel 表格",
                 data=excel_buffer.getvalue(),
-                file_name="天机演算台_排盘历史.xlsx",
+                file_name=(
+                    f"天机演算台_排盘历史_"
+                    f"{export_time_cn}.xlsx"
+                ),
                 mime=(
                     "application/vnd.openxmlformats-"
                     "officedocument.spreadsheetml.sheet"
