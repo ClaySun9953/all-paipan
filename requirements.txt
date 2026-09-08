@@ -6,3 +6,4 @@ timezonefinder
 requests
 geopy
 supabase
+openpyxl
