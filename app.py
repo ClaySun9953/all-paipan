@@ -44,16 +44,19 @@ def get_db():
 
 
 def save_chart_record(title, inputs, ai_prompt):
-    """保存一条排盘记录。"""
     response = (
         get_db()
         .table("chart_records")
         .insert({
             "title": title,
             "inputs": inputs,
-            "result": {
-                "ai_prompt": ai_prompt,
-            },
+
+            # 保留这个字段，避免原来的 result jsonb 不能为空
+            "result": {},
+
+            # 完整排盘文本保存到 text 字段
+            "result_text": ai_prompt,
+
             "initial_analysis": "",
             "review_notes": "",
         })
@@ -61,6 +64,7 @@ def save_chart_record(title, inputs, ai_prompt):
     )
 
     return response.data
+
 
 
 ZHI_NAMES = list("子丑寅卯辰巳午未申酉戌亥")
