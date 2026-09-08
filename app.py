@@ -6,8 +6,10 @@ import math
 import random
 from datetime import timedelta
 
+
 import pytz
 import streamlit as st
+from supabase import create_client
 from timezonefinder import TimezoneFinder
 
 from core_engine import (
@@ -31,6 +33,35 @@ st.set_page_config(
     layout="wide",
     page_icon="🧿",
 )
+
+@st.cache_resource
+def get_db():
+    """创建并缓存 Supabase 客户端。"""
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"],
+    )
+
+
+def save_chart_record(title, inputs, ai_prompt):
+    """保存一条排盘记录。"""
+    response = (
+        get_db()
+        .table("chart_records")
+        .insert({
+            "title": title,
+            "inputs": inputs,
+            "result": {
+                "ai_prompt": ai_prompt,
+            },
+            "initial_analysis": "",
+            "review_notes": "",
+        })
+        .execute()
+    )
+
+    return response.data
+
 
 ZHI_NAMES = list("子丑寅卯辰巳午未申酉戌亥")
 
@@ -1881,44 +1912,57 @@ st.text_area(
     height=760,
 )
 
-st.divider()
+st.subheader("保存排盘记录")
+
+record_title = st.text_input(
+    "记录标题",
+    value=f"{info['name']}：{info['ask']}",
+    help="用于以后在历史记录中识别这次排盘。",
+)
 
 if st.button(
-    "销毁当前存储并重置",
+    "保存当前排盘",
     type="primary",
+    use_container_width=True,
 ):
-    st.session_state.clear()
-    st.rerun()
+    # 这里只保存必要且可转换为 JSON 的输入信息。
+    record_inputs = {
+        "name": info.get("name", ""),
+        "ask": info.get("ask", ""),
+        "city": info.get("city", ""),
+        "address": info.get("address", ""),
+        "longitude": info.get("longitude"),
+        "latitude": info.get("latitude"),
+        "timezone": info.get("timezone", ""),
+        "chart_time": chart_dt.isoformat(),
+        "chart_time_label": chart_time_label,
+        "year_ming": info.get("year_ming"),
+        "birth_year": info.get("birth_year"),
+        "birth_date": str(info.get("birth_date", "")),
+        "birth_time": str(info.get("birth_time", "")),
+        "birth_place_name": info.get(
+            "birth_place_name",
+            "",
+        ),
+        "birth_gender": info.get("birth_gender", ""),
+        "target_year": info.get("target_year"),
+        "yao_list": list(yao_list),
+    }
 
-import streamlit as st
-from supabase import create_client
-
-@st.cache_resource
-def get_db():
-    return create_client(
-        st.secrets["SUPABASE_URL"],
-        st.secrets["SUPABASE_KEY"]
-    )
-
-st.subheader("数据库连接测试")
-
-if st.button("写入一条测试记录"):
     try:
-        response = get_db().table("chart_records").insert({
-            "title": "连接测试",
-            "inputs": {
-                "说明": "这是一条测试输入"
-            },
-            "result": {
-                "说明": "这是一条测试结果"
-            },
-            "initial_analysis": "",
-            "review_notes": ""
-        }).execute()
+        saved_data = save_chart_record(
+            title=record_title.strip() or "未命名排盘",
+            inputs=record_inputs,
+            ai_prompt=ai_prompt,
+        )
 
-        st.success("保存成功，请到 Supabase 表中查看。")
-        st.write(response.data)
+        st.success("当前排盘已经保存到 Supabase。")
 
-    except Exception as e:
-        st.error("保存失败")
-        st.exception(e)
+        if saved_data:
+            st.caption(
+                f"记录编号：{saved_data[0].get('id', '未知')}"
+            )
+
+    except Exception as exc:
+        st.error("保存失败，数据库没有写入记录。")
+        st.exception(exc)
