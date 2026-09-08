@@ -297,13 +297,30 @@ class ZiWeiEngine:
         if year_gan not in self.GAN:
             raise ValueError("年干无效。")
         ming_gan_idx = self._get_ming_gan_index(year_gan, ming_idx)
-        gan_part = ming_gan_idx // 2
-        zhi_part = (ming_idx // 2) % 3
-        ju_value = ((gan_part + zhi_part) % 5) + 1
-        ju_num = [2, 6, 3, 4, 5][ju_value - 1]
+        # 命宫干支纳音五行决定五行局。
+        ming_gan = self.GAN[ming_gan_idx]
+        ming_zhi = self.ZHI[ming_idx]
+        nayin_element = self._nayin_element(ming_gan, ming_zhi)
+        ju_num = {"水": 2, "木": 3, "金": 4, "土": 5, "火": 6}.get(nayin_element, 5)
         ju_names = {2: "水二局", 3: "木三局", 4: "金四局", 5: "土五局", 6: "火六局"}
         return {"number": ju_num, "name": ju_names[ju_num], "status": "简化版",
                 "method": "沿用项目原有五虎遁与纳音五行局简化计算方法。"}
+
+    def _nayin_element(self, gan, zhi):
+        pairs = {
+            "甲子癸亥": "金", "丙寅丁卯": "火", "戊辰己巳": "木",
+            "庚午辛未": "土", "壬申癸酉": "金", "甲戌乙亥": "火",
+            "丙子丁丑": "水", "戊寅己卯": "土", "庚辰辛巳": "金",
+            "壬午癸未": "木", "甲申乙酉": "水", "丙戌丁亥": "土",
+            "戊子己丑": "火", "庚寅辛卯": "木", "壬辰癸巳": "水",
+            "甲午乙未": "金", "丙申丁酉": "火", "戊戌己亥": "木",
+            "庚子辛丑": "土", "壬寅癸卯": "金", "甲辰乙巳": "火",
+            "丙午丁未": "水", "戊申己酉": "土", "庚戌辛亥": "金",
+        }
+        for key, value in pairs.items():
+            if gan + zhi in key:
+                return value
+        return None
 
     def deploy_main_stars(self, lunar_day, ju_num):
         if lunar_day not in range(1, 31):

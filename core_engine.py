@@ -367,7 +367,10 @@ class TimeAndGeo:
         hour_gan = self.GAN[hour_gan_index]
         hour_pillar = hour_gan + hour_zhi
 
-        xun_head = self.get_xun_head(day_index)
+        # 时家奇门的旬首、旬空以时柱为准（不是日柱）。
+        hour_pillar = hour_gan + hour_zhi
+        hour_jiazi_index = self.JIAZI.index(hour_pillar)
+        xun_head = self.get_xun_head(hour_jiazi_index)
         kong_wang = self.XUN_KONG[xun_head]
 
         if day_zhi in "子午卯酉":
@@ -397,7 +400,7 @@ class TimeAndGeo:
                 "year_boundary": "立春",
                 "month_boundary": "真实太阳黄经节气",
                 "zi_hour_day_change": "23:00",
-                "kongwang_from": "日柱",
+                "kongwang_from": "时柱",
             },
         }
 
@@ -684,14 +687,14 @@ class QimenEngine:
             if is_yang
             else [
                 "戊",
-                "乙",
-                "丙",
-                "丁",
-                "癸",
-                "壬",
-                "辛",
-                "庚",
                 "己",
+                "庚",
+                "辛",
+                "壬",
+                "癸",
+                "丁",
+                "丙",
+                "乙",
             ]
         )
 
@@ -788,14 +791,11 @@ class QimenEngine:
             hour_palace = leader_palace
 
         shift = 0
+        palace_ring = list(range(1, 10))
 
         try:
-            leader_index = self.RING.index(
-                self._normalize_position(leader_palace)
-            )
-            hour_index = self.RING.index(
-                self._normalize_position(hour_palace)
-            )
+            leader_index = palace_ring.index(leader_palace)
+            hour_index = palace_ring.index(hour_palace)
 
             shift = hour_index - leader_index
 
@@ -804,13 +804,13 @@ class QimenEngine:
                 "值符转移宫位无法计算。"
             )
 
-        for source_palace in self.RING:
+        for source_palace in palace_ring:
             target_index = (
-                self.RING.index(source_palace)
+                palace_ring.index(source_palace)
                 + shift
-            ) % 8
+            ) % 9
 
-            target_palace = self.RING[target_index]
+            target_palace = palace_ring[target_index]
 
             layout[target_palace]["star"] = (
                 self.STAR_BY_PALACE[source_palace]
@@ -820,20 +820,40 @@ class QimenEngine:
                 earth_stems[source_palace]
             )
 
-        layout[5]["star"] = "天禽"
-        layout[5]["heaven_stem"] = earth_stems.get(
-            2,
-            "",
-        )
-
         return {
             "leader_palace": leader_palace,
             "hour_palace": hour_palace,
+            "zhi_fu_palace": palace_ring[(leader_index + shift) % 9],
             "shift": shift,
             "warnings": warnings,
         }
 
     def _place_doors(
+        self, layout, earth_stems, hour_zhi, xun_shou, is_yang
+    ):
+        warnings = []
+        zhi = list("子丑寅卯辰巳午未申酉戌亥")
+        hour_index = zhi.index(hour_zhi) if hour_zhi in zhi else 0
+        xun_index = zhi.index(xun_shou[1]) if xun_shou and xun_shou[1] in zhi else 0
+        dun_stem = self.XUN_HEAD_TO_DUN_STEM.get(xun_shou, "戊")
+        source = self._find_stem_palace(earth_stems, dun_stem) or 1
+        zhi_shi_door = self.DOOR_BY_PALACE.get(source, "休门")
+        steps = (hour_index - xun_index) % 12
+        path = list(range(1, 10))
+        target = path[(path.index(source) + (steps if is_yang else -steps)) % 9]
+        output_target = 2 if target == 5 else target
+        door_index = self.DOOR_SEQUENCE.index(zhi_shi_door)
+        ring_index = self.RING.index(output_target)
+        for offset in range(8):
+            # 阴遁八门逆时针旋转：值使所在宫为起点，沿环逆向排门。
+            # 阳遁则顺向排布。
+            palace = self.RING[(ring_index + offset) % 8]
+            idx = (door_index + offset) % 8
+            layout[palace]["door"] = self.DOOR_SEQUENCE[idx]
+        print("八门最终数组:", {p: layout[p]["door"] for p in self.RING})
+        return {"door_reference_palace": output_target, "zhi_shi_door": zhi_shi_door, "warnings": warnings}
+
+    def _place_doors_old(
         self,
         layout,
         hour_zhi,
@@ -871,14 +891,24 @@ class QimenEngine:
         # 保留现有项目的门定位方向规则。
         hour_difference = hour_index - xun_index
 
+        # 值使门取旬首遁干地盘落宫对应之门。
+        dun_stem = self.XUN_HEAD_TO_DUN_STEM.get(xun_shou, "戊")
+        source_palace = self.STEM_TO_PALACE.get(dun_stem, 1)
+        zhi_shi_door = self.DOOR_BY_PALACE.get(source_palace, "")
+        # 值使落宫：从旬首遁干落宫按时支步数行进，阴遁逆行并经过中宫。
+        steps = (hour_index - xun_index) % 12
         if is_yang:
-            door_reference = 1 + (
-                hour_difference % 8
-            )
+            door_reference = (source_palace - 1 + steps) % 9 + 1
         else:
-            door_reference = 1 - (
-                hour_difference % 8
-            )
+            door_reference = (source_palace - 1 - steps) % 9 + 1
+        dun_stem = self.XUN_HEAD_TO_DUN_STEM.get(xun_shou, "戊")
+        source_palace = self.STEM_TO_PALACE.get(dun_stem, 1)
+        zhi_shi_door = self.DOOR_BY_PALACE.get(source_palace, "")
+        # 阴遁从旬首宫起，按时支相差步数逆行（含中宫）。
+        steps = (hour_index - xun_index) % 12
+        path = [6, 1, 8, 5, 4, 3, 2, 7]
+        start = path.index(source_palace) if source_palace in path else 0
+        door_reference = path[(start - steps) % len(path)]
 
         door_reference = (
             (door_reference - 1) % 9
@@ -888,10 +918,7 @@ class QimenEngine:
             door_reference = 2
 
         # 根据原始九宫门表确定值使门。
-        zhi_shi_door = self.DOOR_BY_PALACE.get(
-            door_reference,
-            "",
-        )
+        zhi_shi_door = self.DOOR_BY_PALACE.get(door_reference, "")
 
         if not zhi_shi_door:
             warnings.append(
@@ -908,20 +935,13 @@ class QimenEngine:
             source_palace = self.RING[source_index]
 
             target_index = (
-                self.RING.index(door_reference)
+            self.RING.index(door_reference if door_reference != 5 else 2)
                 + offset
             ) % 8
 
             target_palace = self.RING[target_index]
 
-            if is_yang:
-                actual_door_index = (
-                    door_index + offset
-                ) % 8
-            else:
-                actual_door_index = (
-                    door_index - offset
-                ) % 8
+            actual_door_index = (door_index - offset) % 8
 
             layout[target_palace]["door"] = (
                 self.DOOR_SEQUENCE[actual_door_index]
@@ -943,9 +963,9 @@ class QimenEngine:
     ):
         warnings = []
 
-        start_palace = star_info.get(
-            "hour_palace"
-        )
+        start_palace = star_info.get("zhi_fu_palace")
+        if start_palace is None:
+            start_palace = star_info.get("hour_palace")
 
         if start_palace is None:
             warnings.append(
@@ -975,13 +995,10 @@ class QimenEngine:
 
         for offset, god in enumerate(gods):
             if is_yang:
-                index = (
-                    start_index + offset
-                ) % 8
+                index = (start_index + offset) % 8
             else:
-                index = (
-                    start_index - offset
-                ) % 8
+                # 阴遁逆时针：值符→九天→九地→玄武→白虎→六合→太阴→螣蛇。
+                index = (start_index - offset) % 8
 
             palace = self.RING[index]
             layout[palace]["deity"] = god
@@ -1003,11 +1020,15 @@ class QimenEngine:
     ):
         for palace, data in layout.items():
             if stem is not None:
-                if data["heaven_stem"] == stem:
+                if data["heaven_stem"] == stem or stem in str(
+                    data["heaven_stem"]
+                ).split("/"):
                     return palace
 
             if star is not None:
-                if data["star"] == star:
+                if data["star"] == star or star in str(
+                    data["star"]
+                ).split("/"):
                     return palace
 
             if door is not None:
@@ -1019,6 +1040,33 @@ class QimenEngine:
                     return palace
 
         return None
+
+    def _merge_center_into_kun(self, layout):
+        """将中宫（五宫）寄入坤宫（二宫）。
+
+        转盘奇门不单列中宫：天禽随天芮同落坤二宫，中宫的地盘干
+        也使用坤宫地盘干。中宫原有的天盘干不能丢弃，否则会造成干
+        的重复或缺失，因此在坤宫以斜线保留多干标记。
+        """
+        center = layout.get(5)
+        kun = layout.get(2)
+        if not center or not kun:
+            return
+
+        def merge_text(left, right):
+            values = []
+            for value in (left, right):
+                if value and value not in values:
+                    values.append(value)
+            return "/".join(values)
+
+        kun["star"] = merge_text(kun.get("star", ""), center.get("star", ""))
+        kun["heaven_stem"] = merge_text(
+            kun.get("heaven_stem", ""), center.get("heaven_stem", "")
+        )
+        kun["earth_stem"] = kun.get("earth_stem", "")
+        # 中宫不单列门、神；坤宫已有的门神保持不变。
+        layout.pop(5, None)
 
     def _marker(self, value, palace):
         if palace is None:
@@ -1141,6 +1189,7 @@ class QimenEngine:
 
         door_info = self._place_doors(
             layout,
+            earth_stems,
             h_zhi,
             xun,
             is_yang,
@@ -1153,6 +1202,7 @@ class QimenEngine:
             is_yang,
         )
         warnings.extend(deity_warnings)
+        self._merge_center_into_kun(layout)
 
         # 根据排布后的最终布局取值符和值使。
         zhi_fu_palace = self._find_marker_palace(
@@ -2208,11 +2258,8 @@ class LiuYaoEngine:
             if relative not in missing_relatives:
                 continue
 
-            if hidden_index >= len(missing_relatives):
-                break
-
-            relative = missing_relatives[hidden_index]
-            hidden_index += 1
+            # 六亲直接按伏神纳甲地支五行判定，不再按缺失列表错配。
+            relative = self._relative(palace_element, najia["branch"])
 
             strength = self._get_strength(
                 branch=najia["branch"],

@@ -193,11 +193,18 @@ class DaLiuRenEngine:
             warnings.append("贵人起点未出现在天盘反向映射中。")
             return {"generals_by_heaven": {}, "generals_by_earth": {},
                     "gui_ren_start": gui_ren_start, "warnings": warnings}
-        forward = gui_ren_earth in ["亥", "子", "丑", "寅", "卯", "辰"]
-        earth_index = self.ZHI.index(gui_ren_earth)
+        # 天将以贵人所在的天盘支为起点排布；昼顺、夜逆。
+        # 夜贵（如壬癸日酉时取卯）必须从卯本身起逆行，不能以其
+        # 所临地盘支作为天将序列起点。
+        forward = is_daytime
+        heaven_start_index = self.ZHI.index(gui_ren_start)
         generals_by_heaven = {}
         for index in range(12):
-            heaven_index = (earth_index + index) % 12 if forward else (earth_index - index) % 12
+            heaven_index = (
+                heaven_start_index + index
+                if forward
+                else heaven_start_index - index
+            ) % 12
             generals_by_heaven[self.ZHI[heaven_index]] = self.TIAN_JIANG[index]
         generals_by_earth = {e: generals_by_heaven.get(h) for e, h in tian_pan.items()}
         return {"generals_by_heaven": generals_by_heaven, "generals_by_earth": generals_by_earth,
@@ -304,6 +311,23 @@ class DaLiuRenEngine:
                   "steps": steps, "warnings": warnings,
                   "middle_override": None, "final_override": None}
 
+        # 伏吟先于常规贼克取传；阴日从日支上神发用。
+        if self._is_fuyin(shift):
+            yang = self._gan_yinyang(day_gan) == "阳"
+            initial = heaven_plate_by_earth.get(
+                self.JI_GONG[day_gan] if yang else day_zhi
+            )
+            middle = self.ZHI_XING[initial]
+            final = self.ZHI_XING[middle]
+            result.update({
+                "initial": initial,
+                "rule": "伏吟自任课" if yang else "伏吟自信课",
+                "status": "已确定",
+                "middle_override": middle,
+                "final_override": final,
+            })
+            return result
+
         if zei or ke:
             if zei:
                 if len(zei) == 1:
@@ -357,9 +381,6 @@ class DaLiuRenEngine:
             if middle == initial:
                 middle = day_zhi if yang else gan_gong
             final = self.ZHI_XING[middle]
-            if final == middle:
-                final = self.ZHI_CHONG[middle]
-                warnings.append("伏吟末传自刑，取冲支。")
             result.update({"initial": initial, "rule": rule, "status": "已确定",
                            "middle_override": middle, "final_override": final})
             steps.append(f"初传 = {initial}，中传 = {middle}，末传 = {final}。")
