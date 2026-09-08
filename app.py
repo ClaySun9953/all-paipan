@@ -6,6 +6,8 @@ import math
 import random
 import pandas as pd
 from datetime import timedelta
+from io import BytesIO
+
 
 
 import pytz
@@ -30,7 +32,7 @@ from ziwei_engine import ZiWeiEngine
 
 
 st.set_page_config(
-    page_title="赛博玄学 V36.2",
+    page_title="天机演算台",
     layout="wide",
     page_icon="🧿",
 )
@@ -397,7 +399,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("🧿 赛博玄学 V36.2")
+st.title("🧿 天机演算台")
 
 if "yao_list" not in st.session_state:
     st.session_state["yao_list"] = []
@@ -1991,11 +1993,7 @@ if not st.session_state.get("chart_saved", False):
         ),
     }
 
-    record_title = (
-        f"{info.get('name', '')}："
-        f"{info.get('ask', '')}"
-    ).strip("： ")
-
+    
     try:
         save_chart_record(
             title=record_title or "未命名排盘",
@@ -2020,71 +2018,9 @@ st.text_area(
     height=760,
 )
 
-st.subheader("保存排盘记录")
-
-# 使用北京时间作为保存标题中的时间
-save_time_cn = datetime.datetime.now(
-    pytz.timezone("Asia/Shanghai")
-)
-
-record_title = (
-    f"{save_time_cn.strftime('%Y-%m-%d %H:%M:%S')}｜"
-    f"{info.get('name', '未填写')}｜"
-    f"{info.get('ask', '未填写')}"
-)
-
-st.caption(f"本次记录标题：{record_title}")
-
-
-if st.button(
-    "保存当前排盘",
-    type="primary",
-    use_container_width=True,
-):
-    # 这里只保存必要且可转换为 JSON 的输入信息。
-    record_inputs = {
-        "name": info.get("name", ""),
-        "ask": info.get("ask", ""),
-        "city": info.get("city", ""),
-        "address": info.get("address", ""),
-        "longitude": info.get("longitude"),
-        "latitude": info.get("latitude"),
-        "timezone": info.get("timezone", ""),
-        "chart_time": chart_dt.isoformat(),
-        "chart_time_label": chart_time_label,
-        "year_ming": info.get("year_ming"),
-        "birth_year": info.get("birth_year"),
-        "birth_date": str(info.get("birth_date", "")),
-        "birth_time": str(info.get("birth_time", "")),
-        "birth_place_name": info.get(
-            "birth_place_name",
-            "",
-        ),
-        "birth_gender": info.get("birth_gender", ""),
-        "target_year": info.get("target_year"),
-        "yao_list": list(yao_list),
-    }
-
-    try:
-        saved_data = save_chart_record(
-            title=record_title.strip() or "未命名排盘",
-            inputs=record_inputs,
-            ai_prompt=ai_prompt,
-        )
-
-        st.success("当前排盘已经保存到 Supabase。")
-
-        if saved_data:
-            st.caption(
-                f"记录编号：{saved_data[0].get('id', '未知')}"
-            )
-
-    except Exception as exc:
-        st.error("保存失败，数据库没有写入记录。")
-        st.exception(exc)
 
 st.divider()
-st.subheader("历史记录导出")
+st.subheader("历史记录")
 
 if st.button("读取历史记录"):
     try:
@@ -2092,10 +2028,11 @@ if st.button("读取历史记录"):
             get_db()
             .table("chart_records")
             .select(
-                "id, created_at, title, inputs, "
+                "record_no, created_at, title, inputs, "
                 "result_text, initial_analysis, review_notes"
             )
-            .order("created_at", desc=True)
+            # 按后台记录号倒序：最新记录在最上面
+            .order("record_no", desc=True)
             .execute()
         )
 
@@ -2105,10 +2042,10 @@ if st.button("读取历史记录"):
             st.info("目前还没有历史记录。")
 
         else:
-            # 将 inputs 中的 JSON 字段展开成普通表格列
+            # 展开 inputs 中的 JSON 字段
             df = pd.json_normalize(records)
 
-            # 将 Supabase 的 UTC 时间转换为北京时间
+            # 转换数据库时间为北京时间
             if "created_at" in df.columns:
                 df["created_at"] = (
                     pd.to_datetime(
@@ -2119,40 +2056,154 @@ if st.button("读取历史记录"):
                     .dt.strftime("%Y-%m-%d %H:%M:%S")
                 )
 
+            # 调整主要字段的显示名称
+            rename_columns = {
+                "record_no": "记录号",
+                "created_at": "保存时间",
+                "title": "标题",
+                "result_text": "完整排盘内容",
+                "initial_analysis": "当时判断",
+                "review_notes": "复盘笔记",
+                "inputs.name": "求测人",
+                "inputs.ask": "问事",
+                "inputs.city": "城市",
+                "inputs.address": "地址",
+                "inputs.longitude": "经度",
+                "inputs.latitude": "纬度",
+                "inputs.timezone": "时区",
+                "inputs.chart_time": "排盘时间",
+                "inputs.chart_time_label": "排盘时间说明",
+                "inputs.year_ming": "年命",
+                "inputs.birth_year": "出生年份",
+                "inputs.birth_date": "出生日期",
+                "inputs.birth_time": "出生时间",
+                "inputs.birth_place_name": "出生地点",
+                "inputs.birth_gender": "性别",
+                "inputs.target_year": "目标年份",
+                "inputs.yao_list": "爻值",
+            }
+
+            df = df.rename(columns=rename_columns)
+
+            # 将重要字段放到前面
+            preferred_columns = [
+                "记录号",
+                "保存时间",
+                "标题",
+                "求测人",
+                "问事",
+                "城市",
+                "排盘时间",
+                "年命",
+                "出生年份",
+                "出生日期",
+                "出生时间",
+                "性别",
+                "目标年份",
+                "爻值",
+                "完整排盘内容",
+                "当时判断",
+                "复盘笔记",
+            ]
+
+            existing_preferred = [
+                column
+                for column in preferred_columns
+                if column in df.columns
+            ]
+
+            remaining_columns = [
+                column
+                for column in df.columns
+                if column not in existing_preferred
+            ]
+
+            df = df[
+                existing_preferred + remaining_columns
+            ]
+
+            # 前端预览与 Excel 使用同一个 df，
+            # 因此二者顺序完全一致。
             st.dataframe(
                 df,
                 use_container_width=True,
                 hide_index=True,
             )
 
-            # 导出 CSV。
-            # utf-8-sig 可以让 Excel/WPS 正常识别中文。
-            csv_data = df.to_csv(
-                index=False,
-            ).encode("utf-8-sig")
+            # 生成标准 Excel 文件
+            excel_buffer = BytesIO()
+
+            with pd.ExcelWriter(
+                excel_buffer,
+                engine="openpyxl",
+            ) as writer:
+                df.to_excel(
+                    writer,
+                    index=False,
+                    sheet_name="排盘历史记录",
+                )
+
+                worksheet = writer.sheets["排盘历史记录"]
+
+                # 冻结第一行，方便向下查看
+                worksheet.freeze_panes = "A2"
+
+                # 开启筛选
+                worksheet.auto_filter.ref = (
+                    worksheet.dimensions
+                )
+
+                # 设置基础列宽
+                for column_cells in worksheet.columns:
+                    column_letter = (
+                        column_cells[0].column_letter
+                    )
+
+                    header = str(
+                        column_cells[0].value or ""
+                    )
+
+                    if header == "完整排盘内容":
+                        width = 60
+                    elif header in {
+                        "标题",
+                        "问事",
+                        "当时判断",
+                        "复盘笔记",
+                    }:
+                        width = 35
+                    elif header in {
+                        "保存时间",
+                        "排盘时间",
+                    }:
+                        width = 22
+                    else:
+                        width = 16
+
+                    worksheet.column_dimensions[
+                        column_letter
+                    ].width = width
+
+                # 长文本自动换行并顶部对齐
+                from openpyxl.styles import Alignment
+
+                for row in worksheet.iter_rows(
+                    min_row=2
+                ):
+                    for cell in row:
+                        cell.alignment = Alignment(
+                            vertical="top",
+                            wrap_text=True,
+                        )
 
             st.download_button(
-                label="下载 CSV 表格",
-                data=csv_data,
-                file_name="排盘历史记录.csv",
-                mime="text/csv",
-            )
-
-            # 同时提供完整 JSON 备份
-            import json
-
-            json_data = json.dumps(
-                records,
-                ensure_ascii=False,
-                indent=2,
-                default=str,
-            )
-
-            st.download_button(
-                label="下载完整 JSON 备份",
-                data=json_data.encode("utf-8"),
-                file_name="排盘历史记录.json",
-                mime="application/json",
+                label="下载 Excel 表格",
+                data=excel_buffer.getvalue(),
+                file_name="天机演算台_排盘历史.xlsx",
+                mime=(
+                    "application/vnd.openxmlformats-"
+                    "officedocument.spreadsheetml.sheet"
+                ),
             )
 
     except Exception as exc:
