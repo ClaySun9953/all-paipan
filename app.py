@@ -1889,3 +1889,36 @@ if st.button(
 ):
     st.session_state.clear()
     st.rerun()
+
+import streamlit as st
+from supabase import create_client
+
+@st.cache_resource
+def get_db():
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"]
+    )
+
+st.subheader("数据库连接测试")
+
+if st.button("写入一条测试记录"):
+    try:
+        response = get_db().table("chart_records").insert({
+            "title": "连接测试",
+            "inputs": {
+                "说明": "这是一条测试输入"
+            },
+            "result": {
+                "说明": "这是一条测试结果"
+            },
+            "initial_analysis": "",
+            "review_notes": ""
+        }).execute()
+
+        st.success("保存成功，请到 Supabase 表中查看。")
+        st.write(response.data)
+
+    except Exception as e:
+        st.error("保存失败")
+        st.exception(e)
