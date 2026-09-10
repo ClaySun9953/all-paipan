@@ -658,6 +658,8 @@ with st.sidebar:
     initial_date = st.date_input(
         "初始当地民用日期",
         value=local_now.date(),
+        min_value=datetime.date(1900, 1, 1),
+        max_value=datetime.date(3000, 12, 31),
     )
 
     initial_time = st.time_input(
@@ -677,8 +679,10 @@ with st.sidebar:
     )
 
     birth_date_input = st.date_input(
-        "出生日期",
-        value=datetime.date(1990, 1, 1),
+    "出生日期",
+    value=datetime.date(2000, 1, 1),
+    min_value=datetime.date(1900, 1, 1),
+    max_value=datetime.date(3000, 12, 31),
     )
 
     birth_time_input = st.time_input(
@@ -809,7 +813,7 @@ with st.sidebar:
     target_year = st.number_input(
         "目标流年，可选",
         min_value=1900,
-        max_value=2200,
+        max_value=3000,
         value=local_now.year,
     )
 
